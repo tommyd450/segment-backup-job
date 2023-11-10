@@ -1,0 +1,10 @@
+[project]
+requires-python = ">=3.11"
+name = "SegmentBackupJob"
+version = "1.0"
+dependencies = [
+    'analytics==0.6.5',
+    'nydus>=0.10.6',
+    'redis>=2.7.2',
+    'python-dateutil==1.5',
+]
