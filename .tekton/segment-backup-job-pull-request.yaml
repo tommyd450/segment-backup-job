@@ -31,6 +31,8 @@ spec:
     value: .
   - name: revision
     value: '{{revision}}'
+  - name: prefetch-input
+    value: '{"path": ".", "type": "pip"}'
   pipelineSpec:
     finally:
     - name: show-sbom
@@ -202,7 +204,7 @@ spec:
           value: task
         resolver: bundles
       when:
-      - input: $(params.hermetic)
+      - input: $(params.prefetch-input)
         operator: in
         values:
         - "true"
