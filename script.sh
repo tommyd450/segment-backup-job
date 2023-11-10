@@ -1,3 +1,8 @@
+################ SET RUN TYPE DEUBGING ################
+# RUN_TYPE="installation" #debugging                  #
+# RUN_TYPE="nightly" #debugging                       #
+#######################################################
+
 pull_secret_exists=$(oc get secret  pull-secret -n sigstore-monitoring --ignore-not-found=true)
 
 if [[ -z $pull_secret_exists ]]; then
@@ -7,8 +12,9 @@ if [[ -z $pull_secret_exists ]]; then
     exit 0
 fi
 
-registry_auth=$(oc get secret pull-secret -n sigstore-monitoring -o "jsonpath={.data.pull-secret\.json}" | base64 -d | jq .auths."\"registry.redhat.io\"".\"auth\" | cut -d "\"" -f 2 | base64 -d)
-echo $registry_auth
+secret_data=$(oc get secret pull-secret -n sigstore-monitoring -o "jsonpath={.data.pull-secret\.json}")
+registry_auth=$(echo $secret_data | base64 -d | jq .auths."\"registry.redhat.io\"".auth | cut -d "\"" -f 2 | base64 -d)
+
 declare org_id_index
 declare user_id_index
 base64_indexes=()
@@ -24,43 +30,51 @@ for ((i=0; i<${#registry_auth}; i++)); do
   fi
 done
 
-
 org_id=${registry_auth:0:$org_id_index}
 user_id=${registry_auth:$org_id_index+1:$user_id_index-($org_id_index+1)}
 alg_id=$(echo ${registry_auth:$user_id_index+1:(${base64_indexes[0]}-($user_id_index+1))} | base64 -d | jq .alg | cut -d "\"" -f 2 )
 sub_id=$(echo ${registry_auth:(${base64_indexes[0]}+1):(${base64_indexes[1]}-${base64_indexes[0]}-1)} | base64 -d | jq .sub |  cut -d "\"" -f 2)
 
-TOKEN=$(oc whoami -t)
-if [[ -z ${TOKEN} ]]; then
-  echo "OpenShift login unsuccessful. Please try authenticating again."
-  exit
+PROM_TOKEN_SECRET_NAME=$(oc get secret -n openshift-user-workload-monitoring | grep  prometheus-user-workload-token | head -n 1 | awk '{print $1 }')
+PROM_TOKEN_DATA=$(echo $(oc get secret $PROM_TOKEN_SECRET_NAME -n openshift-user-workload-monitoring -o json | jq -r '.data.token') | base64 -d)
+THANOS_QUERIER_HOST=$(oc get route thanos-querier -n openshift-monitoring -o json | jq -r '.spec.host')
+
+echo "org_id: $org_id" > /opt/app-root/src/tmp
+echo "user_id: $user_id" >> /opt/app-root/src/tmp
+echo "alg_id: $alg_id" >> /opt/app-root/src/tmp
+echo "sub_id: $sub_id" >> /opt/app-root/src/tmp
+
+if [[ $RUN_TYPE == "nightly" ]]; then
+  fulcio_new_certs=$(curl -X GET -kG "https://$THANOS_QUERIER_HOST/api/v1/query?" --data-urlencode "query=fulcio_new_certs" -H "Authorization: Bearer $PROM_TOKEN_DATA" | jq '.data.result[] | .value[1]')
+
+  rekor_new_entries_query_data=$(curl -X GET -kG "https://$THANOS_QUERIER_HOST/api/v1/query?" --data-urlencode "query=rekor_new_entries" -H "Authorization: Bearer $PROM_TOKEN_DATA" | jq '.data.result[]' )
+  declare rekor_new_entries
+  if [[ -z $rekor_new_entries_query_data ]]; then
+    rekor_new_entries="0"
+  else 
+    rekor_new_entries=$(curl -X GET -kG "https://$THANOS_QUERIER_HOST/api/v1/query?" --data-urlencode "query=rekor_new_entries" -H "Authorization: Bearer $PROM_TOKEN_DATA" | jq '.data.result[] | .value[1]')
+  fi
+
+  declare rekor_qps_by_api
+  rekor_qps_by_api_query_data=$(curl -X GET -kG "https://$THANOS_QUERIER_HOST/api/v1/query?" --data-urlencode "query=rekor_qps_by_api" -H "Authorization: Bearer $PROM_TOKEN_DATA" | jq '.data.result[]' )
+  if [[ -z $rekor_qps_by_api_query_data ]]; then
+    rekor_qps_by_api=""
+  else 
+    rekor_qps_by_api=$(curl -X GET -kG "https://$THANOS_QUERIER_HOST/api/v1/query?" --data-urlencode "query=rekor_qps_by_api" -H "Authorization: Bearer $PROM_TOKEN_DATA" | \
+    jq -r '.data.result[] | "method:" + .metric.method + ",status_code:" + .metric.code + ",path:" + .metric.path + ",value:" + .value[1] + "|"')
+  fi
+  
+  echo "fulcio_new_certs: $fulcio_new_certs" >> /opt/app-root/src/tmp
+  echo "rekor_new_entries: $rekor_new_entries" >> /opt/app-root/src/tmp
+  echo "rekor_qps_by_api: " $rekor_qps_by_api >> /opt/app-root/src/tmp
 fi
 
-
-PROM_OCP_ROUTE=$(oc get route prometheus-k8s -n openshift-monitoring | grep -w prometheus-k8s | tr -s ' ' | cut -d " " -f2)
-PROM_URL="https://${PROM_OCP_ROUTE}"
-
-fulcio_new_certs=$(curl --globoff -s -k -X POST -H "Authorization: Bearer ${TOKEN}" \
--g "${PROM_URL}/api/v1/query" \
---data-urlencode "query=fulcio_new_certs" | \
-jq -r '.data.result[] | .value[1]')
-
-rekor_new_entries=$(curl --globoff -s -k -X POST -H "Authorization: Bearer ${TOKEN}" \
--g "${PROM_URL}/api/v1/query" \
---data-urlencode "query=rekor_new_entries" | \
-jq -r '.data.result[] | .value[1]')
-
-rekor_qps_by_api=$(curl --globoff -s -k -X POST -H "Authorization: Bearer ${TOKEN}" \
--g "${PROM_URL}/api/v1/query" \
---data-urlencode "query=rekor_qps_by_api" | \
-jq -r '.data.result[] | "method:" + .metric.method + ",status_code:" + .metric.code + ",path:" + .metric.path + ",value:" + .value[1] + "|"')
-
-echo "org_id: $org_id" > ./tmp
-echo "user_id: $user_id" >> ./tmp
-echo "alg_id: $alg_id" >> ./tmp
-echo "sub_id: $sub_id" >> ./tmp
-echo "fulcio_new_certs: $fulcio_new_certs" >> ./tmp
-echo "rekor_new_entries: $rekor_new_entries" >> ./tmp
-echo "rekor_qps_by_api: " $rekor_qps_by_api >> ./tmp
-
-python3 ./main.py
+if [[ $RUN_TYPE == "nightly" ]]; then
+  python3 /opt/app-root/src/main-nightly.py
+elif [[ $RUN_TYPE == "installation" ]]; then
+  python3 /opt/app-root/src/main-installation.py
+else 
+  echo "error \$RUN_TYPE not set.
+    options: \"nightly\", \"installation\""
+  exit 1
+fi
