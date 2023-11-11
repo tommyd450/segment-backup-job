@@ -8,8 +8,14 @@ LABEL com.redhat.component="segment-collection"
 
 COPY . /opt/app-root/src
 
-RUN mkdir /tmp/bin && curl https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64 > /tmp/bin/jq && \
-    chmod 755 /tmp/bin/jq && mkdir /tmp/oc && \
+USER 0
+
+RUN mkdir /opt/app-root/src/bin && cd /opt/app-root/src/bin && \
+    curl -sLO https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64 && \
+    mv jq-linux64 jq && chmod 755 /opt/app-root/src/bin/jq && mkdir /tmp/oc && \
     curl -L https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz > /tmp/oc/openshift-client-linux.tar.gz && cd /tmp/oc && \
-    tar xvf openshift-client-linux.tar.gz && export PATH=$PATH:/tmp/oc && \
-    python3 -m pip install analytics
+    tar xvf openshift-client-linux.tar.gz && mv /tmp/oc/oc /opt/app-root/src/bin/oc && \
+    cd /opt/app-root/src/ && export PATH=$PATH:/opt/app-root/src/bin && \
+    python3 -m pip install --upgrade pip && pip3 install -r requirements.txt --force-reinstall
+
+USER 1001
