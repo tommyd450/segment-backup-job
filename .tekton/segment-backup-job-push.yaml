@@ -201,9 +201,9 @@ spec:
         resolver: bundles
       when:
       - input: $(params.prefetch-input)
-        operator: in
+        operator: notin
         values:
-        - "true"
+        - "{}"
       workspaces:
       - name: source
         workspace: workspace
