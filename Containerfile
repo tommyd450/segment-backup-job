@@ -11,7 +11,7 @@ COPY . /opt/app-root/src
 USER 0
 
 # Temp fix to address CVE-2023-38545 and CVE-2023-38546
-RUN dnf update -y curl-minimal docker
+RUN dnf update -y curl-minimal
 
 RUN mkdir /opt/app-root/src/bin && cd /opt/app-root/src/bin && \
     curl -sLO https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64 && \
