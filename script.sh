@@ -15,24 +15,26 @@ fi
 secret_data=$(oc get secret pull-secret -n sigstore-monitoring -o "jsonpath={.data.pull-secret\.json}")
 registry_auth=$(echo $secret_data | base64 -d | jq .auths."\"registry.redhat.io\"".auth | cut -d "\"" -f 2 | base64 -d)
 
-declare org_id_index
-declare user_id_index
+declare registry_org_id_index
+declare registry_user_id_index
 base64_indexes=()
 
 for ((i=0; i<${#registry_auth}; i++)); do
   char="${registry_auth:$i:1}"
   if [[ $char == "|" ]]; then
-    org_id_index=$i
+    registry_org_id_index=$i
   elif [[ $char == ":" ]]; then
-    user_id_index=$i
+    registry_user_id_index=$i
   elif [[ $char == "." ]]; then
     base64_indexes+=("$i")
   fi
 done
 
-org_id=${registry_auth:0:$org_id_index}
-user_id=${registry_auth:$org_id_index+1:$user_id_index-($org_id_index+1)}
-alg_id=$(echo ${registry_auth:$user_id_index+1:(${base64_indexes[0]}-($user_id_index+1))} | base64 -d | jq .alg | cut -d "\"" -f 2 )
+# registryregistry_org_id=${registry_auth:0:$registry_org_id_index}
+# registry_user_id=${registry_auth:$registry_org_id_index+1:$registry_user_id_index-($registry_org_id_index+1)}
+org_id=$(echo $secret_data | base64 -d | jq ".orgId" | cut -d "\"" -f 2 )
+user_id=$(echo $secret_data | base64 -d  | jq ".userId" | cut -d "\"" -f 2 )
+alg_id=$(echo ${registry_auth:$registry_user_id_index+1:(${base64_indexes[0]}-($registry_user_id_index+1))} | base64 -d | jq .alg | cut -d "\"" -f 2 )
 sub_id=$(echo ${registry_auth:(${base64_indexes[0]}+1):(${base64_indexes[1]}-${base64_indexes[0]}-1)} | base64 -d | jq .sub |  cut -d "\"" -f 2)
 
 PROM_TOKEN_SECRET_NAME=$(oc get secret -n openshift-user-workload-monitoring | grep  prometheus-user-workload-token | head -n 1 | awk '{print $1 }')
@@ -41,6 +43,8 @@ THANOS_QUERIER_HOST=$(oc get route thanos-querier -n openshift-monitoring -o jso
 
 echo "org_id: $org_id" > /opt/app-root/src/tmp
 echo "user_id: $user_id" >> /opt/app-root/src/tmp
+# echo "registry_org_id: $registry_org_id" > /opt/app-root/src/tmp
+# echo "registry_user_id: $registry_user_id" >> /opt/app-root/src/tmp
 echo "alg_id: $alg_id" >> /opt/app-root/src/tmp
 echo "sub_id: $sub_id" >> /opt/app-root/src/tmp
 
