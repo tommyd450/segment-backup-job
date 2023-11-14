@@ -11,12 +11,14 @@ COPY . /opt/app-root/src
 USER 0
 
 # Temp fix to address CVE-2023-38545 and CVE-2023-38546
-RUN dnf install openshift-clients
 RUN dnf update -y curl-minimal docker
 
 RUN mkdir /opt/app-root/src/bin && cd /opt/app-root/src/bin && \
     curl -sLO https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64 && \
     mv jq-linux64 jq && chmod 755 /opt/app-root/src/bin/jq && mkdir /tmp/oc && \
+    curl -L https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz > /tmp/oc/openshift-client-linux.tar.gz && cd /tmp/oc && \
+    tar xvf openshift-client-linux.tar.gz && mv /tmp/oc/oc /opt/app-root/src/bin/oc && \
+    cd /opt/app-root/src/ && export PATH=$PATH:/opt/app-root/src/bin && \
     python3 -m pip install --upgrade pip && pip3 install -r requirements.txt --force-reinstall
 
 USER 1001
