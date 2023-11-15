@@ -1,4 +1,4 @@
-FROM registry.redhat.io/rhel9/python-311@sha256:1e0e60ebb9ba064e040f6668380b7caa830def2b3ea9df17d954fdafe280f2c0
+FROM registry.redhat.io/ubi9/python-311@sha256:944fe5d61deb208b58dbb222bbd9013231511f15ad67b193f2717ed7da8ef97b
 LABEL description="This image provides a data collection service for segment"
 LABEL io.k8s.description="This image provides a data collection service for segment"
 LABEL io.k8s.display-name="segment collection"
@@ -9,9 +9,6 @@ LABEL com.redhat.component="segment-collection"
 COPY . /opt/app-root/src
 
 USER 0
-
-# Temp fix to address CVE-2023-38545 and CVE-2023-38546
-RUN dnf update -y curl-minimal
 
 RUN mkdir /opt/app-root/src/bin && cd /opt/app-root/src/bin && \
     curl -sLO https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64 && \
